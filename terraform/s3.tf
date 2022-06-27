@@ -49,21 +49,38 @@ resource "aws_s3_bucket_cors_configuration" "example" {
 }
 
 #Upload files of your static website
-resource "aws_s3_bucket_object" "html" {
-  for_each = fileset("../static-site/", "**/*.html")
+# resource "aws_s3_object" "html" {
+#   for_each = fileset("../static-site/", "*")
+
+#   bucket       = aws_s3_bucket.website_bucket.bucket
+#   key          = each.value
+#   source       = "../static-site/${each.value}"
+#   etag         = filemd5("../static-site/${each.value}")
+#   content_type = "text/html"
+# }
+
+module "template_files" {
+  source = "hashicorp/dir/template"
+  base_dir = "../${path.module}/static-site"
+}
+
+resource "aws_s3_bucket_object" "static_files" {
+  for_each = module.template_files.files
 
   bucket       = aws_s3_bucket.website_bucket.bucket
-  key          = each.value
-  source       = "../static-site/${each.value}"
-  etag         = filemd5("../static-site/${each.value}")
-  content_type = "text/html"
-}
+  key          = each.key
+  content_type = each.value.content_type
 
-# Print the files processed so far
-output "fileset-results" {
-  value = fileset("../static-site/", "**/*")
-}
+  # The template_files module guarantees that only one of these two attributes
+  # will be set for each file, depending on whether it is an in-memory template
+  # rendering result or a static file on disk.
+  source  = each.value.source_path
+  content = each.value.content
 
+  # Unless the bucket has encryption enabled, the ETag of each object is an
+  # MD5 hash of that object.
+  etag = each.value.digests.md5
+}
 
 
 
